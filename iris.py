@@ -2,6 +2,7 @@ import numpy as np
 from sklearn import datasets
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
 # Función sigmoide y su derivada
 def sigmoid(x):
@@ -25,7 +26,7 @@ encoder = OneHotEncoder(sparse_output=False)
 y = encoder.fit_transform(y)  # Ahora tenemos 3 columnas (una por clase)
 
 # Dividir en datos de entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 # Inicializar pesos para red con 4 entradas, 3 neuronas ocultas y 3 salidas
 def initialize_weights():
@@ -70,70 +71,120 @@ def update_weights(Vij, delta_Vij, Wjk, delta_Wjk):
     return Vij, Wjk
 
 # Parámetros de entrenamiento
-alpha = 0.5
+alpha = 0.3
 epochs = 10000
 
-# Inicializar pesos
-Vij, Wjk = initialize_weights()
+# Almacenar resultados de precisión y error para TODOS los experimentos
+accuracies = []
+errors = []
 
-# Entrenamiento
-for epoch in range(epochs):
-    total_error = 0  # Error acumulado
+# Realizar varios experimentos
+for experiment in range(35):
+    print(f"Experimento {experiment }")
+    prev_accuracy = None
 
-    for i in range(X_train.shape[0]):
-        X_sample = X_train[i]
-        T_sample = y_train[i]
+    # Inicializar pesos
+    Vij, Wjk = initialize_weights()
 
-        # Feedforward
-        Zinj, X_bias = calculate_Zinj(X_sample, Vij)
-        Zj = calculate_Zj(Zinj)
-        Yink, Zj_bias = calculate_Yink(Zj, Wjk)
-        Yk = calculate_Yk(Yink)
+    prev_error_total = None  # Para almacenar el error total de la época anterior
 
-        # Evitar propagación de NaN
-        if np.isnan(Yk).any():
-            print(f"Error en la época {epoch}: Se encontraron valores NaN. Deteniendo entrenamiento.")
-            break
+    # Almacenar resultados por época
+    experiment_accuracies = []
+    experiment_errors = []
 
-        # Backpropagation
-        dk = calculate_dk(T_sample, Yk)
-        delta_Wjk = calculate_delta_Wjk(alpha, dk, Zj_bias)
-        Dinj = calculate_dinj(dk, Wjk)
-        dj = calculate_dj(Dinj, Zinj)
-        delta_Vij = calculate_delta_Vij(alpha, dj, X_bias)
+    # Entrenamiento
+    for epoch in range(epochs):
+        total_error = 0  # Error total acumulado en la época
+        correct = 0  # Contador de aciertos para la precisión
 
-        # Actualizar pesos
-        Vij, Wjk = update_weights(Vij, delta_Vij, Wjk, delta_Wjk)
+        for i in range(X_train.shape[0]):
+            X_sample = X_train[i]
+            T_sample = y_train[i]
 
-        # Error cuadrático medio
-        total_error += np.sum((T_sample - Yk) ** 2)
+            # Feedforward
+            Zinj, X_bias = calculate_Zinj(X_sample, Vij)
+            Zj = calculate_Zj(Zinj)
+            Yink, Zj_bias = calculate_Yink(Zj, Wjk)
+            Yk = calculate_Yk(Yink)
 
-    # Mostrar error cada 1000 épocas
-    if epoch % 1000 == 0:
-        print(f"Época {epoch}, Error total: {total_error}")
+            # Evitar propagación de NaN
+            if np.isnan(Yk).any():
+                print(f"Error en la época {epoch}: Se encontraron valores NaN. Deteniendo entrenamiento.")
+                break
 
-print("Entrenamiento finalizado.")
+            # Backpropagation
+            dk = calculate_dk(T_sample, Yk)
+            delta_Wjk = calculate_delta_Wjk(alpha, dk, Zj_bias)
+            Dinj = calculate_dinj(dk, Wjk)
+            dj = calculate_dj(Dinj, Zinj)
+            delta_Vij = calculate_delta_Vij(alpha, dj, X_bias)
 
-# Pruebas después del entrenamiento
-print("\nPruebas después del entrenamiento:")
-correct = 0
-for i in range(X_test.shape[0]):
-    X_sample = X_test[i]
-    T_sample = y_test[i]
+            # Actualizar pesos
+            Vij, Wjk = update_weights(Vij, delta_Vij, Wjk, delta_Wjk)
 
-    Zinj, X_bias = calculate_Zinj(X_sample, Vij)
-    Zj = calculate_Zj(Zinj)
-    Yink, Zj_bias = calculate_Yink(Zj, Wjk)
-    Yk = calculate_Yk(Yink)
+            # Sumar error cuadrático
+            total_error += np.sum((T_sample - Yk) ** 2)
 
-    predicted_class = np.argmax(Yk)  # Clase con la mayor probabilidad
-    actual_class = np.argmax(T_sample)  # Clase real
+            # Contar aciertos para precisión
+            predicted_class = np.argmax(Yk)
+            actual_class = np.argmax(T_sample)
+            if predicted_class == actual_class:
+                correct += 1
 
-    if predicted_class == actual_class:
-        correct += 1
+        # Calcular precisión de la época
+        accuracy = (correct / X_train.shape[0]) * 100  # Corregir a X_train.shape[0] para precisión
+        experiment_accuracies.append(accuracy)
 
-    print(f"Entrada: {X_sample}, Salida esperada: {actual_class}, Salida predicha: {predicted_class}")
+        # Mostrar precisión y error por época
+        print(f"Época {epoch}: Precisión = {accuracy:.2f}%, Error total = {total_error:.4f}")
 
-# Mostrar precisión final
-accuracy = (correct / X_test.shape[0]) * 100
-print(f"\nPrecisión en datos de prueba: {accuracy:.2f}%")
+        # Condición de early stopping basada en el error total
+        if prev_error_total is not None:
+            error_improvement = prev_error_total - total_error
+            improvement_percentage = (error_improvement / prev_error_total) * 100  # Calcular el porcentaje de mejora
+
+            if improvement_percentage < 0.01:  # Si la mejora es menor al 0.01%
+                print(f"Deteniendo entrenamiento en la época {epoch} porque la mejora en el error total es menor al 0.01%.")
+                break
+
+        prev_error_total = total_error  # Guardamos el error total para la próxima comparación
+
+        experiment_errors.append(total_error)
+
+    # Almacenar resultados de precisión y error por experimento
+    accuracies.append(np.mean(experiment_accuracies))
+    errors.append(np.mean(experiment_errors))
+
+# === Terminaron los experimentos ===
+
+# Graficar resultados de TODOS los experimentos
+plt.figure(figsize=(10, 5))
+
+# Gráfica de precisión (promedio por experimento)
+plt.subplot(1, 2, 1)
+plt.plot(accuracies, marker='o', label="Precisión promedio por experimento")  # Usamos 'o' para marcar cada experimento
+plt.title(f"Precisión promedio por Experimento\nMedia: {np.mean(accuracies):.2f}% | Desviación Estándar: {np.std(accuracies):.2f}")
+plt.axhline(y=95, color='orange', linestyle='--', label='Línea 95%')  # Línea del 95% en naranja
+plt.axhline(y=97, color='blue', linestyle='--', label='Línea 96%')    # Línea del 96% en azul
+plt.axhline(y=99, color='green', linestyle='--', label='Línea 99%')   # Línea del 99% en verde
+plt.xlabel('Experimento')
+plt.ylabel('Precisión (%)')
+plt.legend()
+
+# Gráfica de error (promedio por experimento)
+plt.subplot(1, 2, 2)
+plt.plot(errors, label="Error promedio por experimento")
+plt.title(f"Error promedio (35 experimentos)\nMedia: {np.mean(errors):.2f} | Desviación Estándar: {np.std(errors):.2f}")
+plt.xlabel('Experimento')
+plt.ylabel('Error cuadrático medio')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# Mostrar resultados finales
+print(f"==== Resultados Finales sobre 35 experimentos ====")
+print(f"Precisión media: {np.mean(accuracies):.2f}%")
+print(f"Desviación estándar de la precisión: {np.std(accuracies):.2f}")
+print(f"Error medio: {np.mean(errors):.2f}")
+print(f"Desviación estándar del error: {np.std(errors):.2f}")
